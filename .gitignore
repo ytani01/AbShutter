@@ -1,0 +1,4 @@
+RCS/
+__pycache__/
+*.pyc
+*~
