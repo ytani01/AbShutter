@@ -1,19 +1,19 @@
-AbShutter
+# AbShutter
 
-# Hardware
+## Hardware
 
 * Raspberry Pi (Zero WH etc.)
 
 * AB Shutter3
 
-# Install
+## Install
 
 ```bash
 $ sudo apt install -y bluetooth libbluetooth-dev build-essential evtest
 $ sudo pip3 install -U evdev
 ```
 
-# pairing
+## pairing
 
 ```bash
 $ sudo bluetoothctl
@@ -25,7 +25,7 @@ $ sudo bluetoothctl
 [...]# quit
 ```
 
-(3) test
+## test
 
 ```bash
 $ sudo evtest
