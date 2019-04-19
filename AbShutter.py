@@ -30,14 +30,16 @@ def get_logger(name, debug=False):
 
 #####
 class AbShutter:
-    EV_VAL = ('PUSH', 'RELEASE', 'HOLD')
+    EV_VAL = ('RELEASE', 'PUSH', 'HOLD')
 
-    def __init__(self, dev=0, debug=False):
+    def __init__(self, dev=0, cb_func=None, debug=False):
         self.debug = debug
         self.logger = get_logger(__class__.__name__, self.debug)
         self.logger.debug('dev=%d', dev)
 
         self.dev            = dev
+        self.cb_func        = cb_func
+        
         self.input_dev_file = '/dev/input/event' + str(self.dev)
         if not os.path.exists(self.input_dev_file):
             self.logger.error('no such device: %s', self.input_dev_file)
@@ -56,6 +58,8 @@ class AbShutter:
                 break
             
         logger.debug('%s', (ev.code, ev.value))
+        if self.cb_func != None:
+            self.cb_func(ev.code, ev.value)
         return (ev.code, ev.value)
 
     def loop(self):
@@ -63,11 +67,16 @@ class AbShutter:
 
         while True:
             (code, value) = self.wait_event1()
-            logger.debug('%s', (code, value))
-            logger.info('%s %s',
-                        evdev.events.keys[code], __class__.EV_VAL[value])
+            logger.debug('%s(%d) %s(%d)',
+                        evdev.events.keys[code],code,
+                        __class__.EV_VAL[value], value)
         
     
+#####
+def cb_func(code, value):
+    print('code=%d:%s, value=%d:%s' % (code, evdev.events.keys[code],
+                                       value, AbShutter.EV_VAL[value]))
+
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
@@ -81,7 +90,7 @@ def main(dev, debug):
 
     logger.debug('dev=%d', dev)
     
-    obj = AbShutter(dev)
+    obj = AbShutter(dev, cb_func, debug=debug)
     obj.loop()
 
 if __name__ == '__main__':
