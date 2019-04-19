@@ -1,4 +1,11 @@
-# AbShutter
+# AbShutter class for 'AB Shutter3'
+
+## 「AB Shutter3」とは？
+
+自撮りするときにリモートでシャッターを押すボタンです。
+スマホとはBluetooth(HID Profile)で接続します。
+見た目がまったく同じ類似品(バッタもん？)も多く出回っていて、
+ダイソーやAmazonで安価で入手できます。
 
 
 ## Hardware
