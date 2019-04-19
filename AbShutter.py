@@ -78,13 +78,21 @@ class AbShutter(threading.Thread):
 
         while True:
             (code, value) = self.wait_key_event()
-            self.logger.debug('%s(%d) %s(%d)',
-                              evdev.events.keys[code],code,
-                              __class__.EV_VAL[value], value)
+            self.logger.debug('%s(%d) %s(%d)', __class__.keycode2str(code),
+                              __class__.val2str(value), value)
 
     def run(self):
         self.logger.debug('')
         self.loop()
+
+
+    @classmethod
+    def keycode2str(cls, code):
+        return evdev.events.keys[code]
+
+    @classmethod
+    def val2str(cls, value):
+        return cls.EV_VAL[value]
 
 #####
 class sample:
@@ -117,8 +125,9 @@ class sample:
         self.logger.debug('')
         
         print('dev=%d, code=%d:%s, value=%d:%s'
-              % (dev, code, evdev.events.keys[code],
-                 value, AbShutter.EV_VAL[value]))
+              % (dev,
+                 code, AbShutter.keycode2str(code),
+                 value, AbShutter.val2str(value)))
         
 
 #####
