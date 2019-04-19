@@ -113,7 +113,7 @@ $ sudo evtest
 ... (KEY_VOLUMEUP) ...
 [Ctrl]-C
 
-$ ./test1.py
+$ ./evdev-test1.py
 devs: ['/dev/input/event0']
 input_dev device /dev/input/event0, name "AB Shutter3       ", phys "B8:27:EB:73:30:CC"
 ---
