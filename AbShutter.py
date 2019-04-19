@@ -78,7 +78,8 @@ class AbShutter(threading.Thread):
 
         while True:
             (code, value) = self.wait_key_event()
-            self.logger.debug('%s(%d) %s(%d)', __class__.keycode2str(code),
+            self.logger.debug('%s(%d) %s(%d)',
+                              __class__.keycode2str(code), code, 
                               __class__.val2str(value), value)
 
     def run(self):

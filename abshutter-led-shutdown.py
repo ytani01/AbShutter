@@ -60,21 +60,33 @@ class app:
         self.led = Led(self.led_pin)
 
         self.objs = []
-        for d in self.devs:
-            o = AbShutter(d, self.ab_cb_func, debug=self.debug)
+        devlst = list(self.devs)
+        while len(devlst) != 0:
+            self.logger.info('devlst=%s', str(devlst))
+            
+            d = devlst.pop(0)
+            try:
+                o = AbShutter(d, self.ab_cb_func, debug=self.debug)
+            except Exception as e:
+                self.logger.error('%s', str(e))
+                devlst.append(d)
+                time.sleep(2)
+                continue
+                
             o.start()
             self.objs.append(o)
+                
         self.logger.debug(str(self.objs))
 
         while True:
-            print(time.strftime('%Y/%m/%d(%a) %H:%M:%S'))
+            self.logger.info('%s', time.strftime('%Y/%m/%d(%a) %H:%M:%S'))
             time.sleep(10)
 
     def ab_cb_func(self, dev, code, value):
         self.logger.debug('dev=%d, code=%d, value=%d', dev, code, value)
         key_name = AbShutter.keycode2str(code)
         val_str  = AbShutter.val2str(value)
-        print('dev:%d, %s:%s' % (dev, key_name, val_str))
+        self.logger.info('/dev/input/event%d, %s:%s', dev, key_name, val_str)
 
         if val_str == 'PUSH':
             self.led.on()
@@ -82,10 +94,9 @@ class app:
             self.led.off()
 
     def sw_cb_func(self, event):
-        print('pin:%d, %s[%d,%d]:%s' % (event.pin, event.name,
-                                        event.push_count,
-                                        event.timeout_idx, 
-                                        Switch.val2str(event.value)))
+        self.logger.info('pin:%d, %s[%d,%d]:%s', event.pin, 
+                event.name, event.push_count, event.timeout_idx, 
+                Switch.val2str(event.value))
 
         if event.name == 'pressed':
             self.led.on()
