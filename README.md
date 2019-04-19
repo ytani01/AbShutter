@@ -71,6 +71,13 @@ $ python3
 * AB Shutter3
 
 
+## Software
+
+* Raspbian Stretch
+
+* Python 3.5.3～
+
+
 ## Install
 
 ```bash
