@@ -34,6 +34,8 @@ def get_logger(name, debug=False):
 
 #####
 class app:
+    CMDLINE_SHUTDOWN = ['sudo', 'shutdown', '-h', 'now']
+    
     def __init__(self, devs, led_pin, sw_pin, debug=False):
         self.debug  = debug
         self.logger = get_logger(__class__.__name__, self.debug)
@@ -50,14 +52,17 @@ class app:
             {'timeout':5,   'blink':{'on':0.02, 'off':0.04}},	# blink3
             {'timeout':7,   'blink':{'on':0,    'off':0}}]	# end
 
+        self.level = 0
+
         self.timeout_sec = []
         for i in range(len(self.long_press)):
             self.timeout_sec.append(self.long_press[i]['timeout'])
 
         self.sw  = Switch(self.sw_pin, self.timeout_sec, debug=self.debug)
-        self.sl  = SwitchListener ([self.sw], self.sw_cb_func,
-                                   debug=self.debug)
+        self.sl  = SwitchListener ([self.sw], self.cb_sw, debug=self.debug)
         self.led = Led(self.led_pin)
+
+        self.led.blink(0.5, 0.5)
 
         self.objs = []
         devlst = list(self.devs)
@@ -66,7 +71,7 @@ class app:
             
             d = devlst.pop(0)
             try:
-                o = AbShutter(d, self.ab_cb_func, debug=self.debug)
+                o = AbShutter(d, self.cb_ab, debug=self.debug)
             except Exception as e:
                 self.logger.error('%s', str(e))
                 devlst.append(d)
@@ -78,11 +83,22 @@ class app:
                 
         self.logger.debug(str(self.objs))
 
+    def main(self):
         while True:
-            self.logger.info('%s', time.strftime('%Y/%m/%d(%a) %H:%M:%S'))
+            self.logger.info('%s  level:%d',
+                             time.strftime('%Y/%m/%d(%a) %H:%M:%S'),
+                             self.level)
             time.sleep(10)
 
-    def ab_cb_func(self, dev, code, value):
+    def shutdown(self):
+        GPIO.setup(self.led_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+        self.logger.debug('cmdline: %s', str(self.CMDLINE_SHUTDOWN))
+        subprocess.run(self.CMDLINE_SHUTDOWN)
+        return
+
+    # callback function for AB Shutter
+    def cb_ab(self, dev, code, value):
         self.logger.debug('dev=%d, code=%d, value=%d', dev, code, value)
         key_name = AbShutter.keycode2str(code)
         val_str  = AbShutter.val2str(value)
@@ -93,7 +109,8 @@ class app:
         if val_str == 'RELEASE':
             self.led.off()
 
-    def sw_cb_func(self, event):
+    # callback function for switch
+    def cb_sw(self, event):
         self.logger.info('pin:%d, %s[%d,%d]:%s', event.pin, 
                 event.name, event.push_count, event.timeout_idx, 
                 Switch.val2str(event.value))
@@ -101,7 +118,23 @@ class app:
         if event.name == 'pressed':
             self.led.on()
         if event.name == 'released':
+            self.level = 0
             self.led.off()
+        if event.name == 'timer':
+            self.level = event.timeout_idx
+            if self.level > 0 and self.level < len(self.long_press) - 1:
+                self.led.off()
+                self.led.blink(self.long_press[self.level]['blink']['on'],
+                               self.long_press[self.level]['blink']['off'])
+            else:
+                self.led.off()
+
+        if self.level >= len(self.long_press) - 1:
+            self.level = 999
+            self.led.off()
+            self.shutdown()
+        
+        self.logger.info('level:%d', self.level)
 
 #####
 def setup_GPIO():
@@ -112,16 +145,28 @@ def cleanup_GPIO():
     GPIO.cleanup()
 
 #####
+#
+# default pin assignment
+#
+#           BCM06|○○|BCM12
+#           BCM13|○□|GND
+#           BCM19|○○|BCM16
+#   led_pin BCM26|●◆|BCM20 switch_vcc
+#   GND     GND  |■●|BCM21 switch_pin
+#                 ----
+#
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('devs', metavar='[0|1..]...', type=int, nargs=-1)
-@click.option('--led_pin', '--led', '-l', type=int, default=10, 
+@click.option('--led_pin', '-l', type=int, default=5, 
               help='LED pin')
-@click.option('--switch_pin', '--sw_pin', '--sw', '-s', type=int, default=24,
+@click.option('--switch_pin', '-s', type=int, default=3,
+              help='Switch pin')
+@click.option('--switch_vcc', '-v', type=int, default=0,
               help='Switch pin')
 @click.option('--debug', '-d', 'debug', is_flag=True, default=False,
               help='debug flag')
-def main(devs, led_pin, switch_pin, debug):
+def main(devs, led_pin, switch_pin, switch_vcc, debug):
     logger.setLevel(INFO)
     if debug:
         logger.setLevel(DEBUG)
@@ -129,8 +174,13 @@ def main(devs, led_pin, switch_pin, debug):
     logger.debug('devs:        %s', str(devs))
     logger.debug('led_pin:     %d', led_pin)
     logger.debug('switch_pin:  %d', switch_pin)
+    logger.debug('switch_vcc:  %d', switch_vcc)
 
     setup_GPIO()
+    if switch_vcc != 0:
+        GPIO.setup(switch_vcc, GPIO.OUT)
+        GPIO.output(switch_vcc, GPIO.HIGH)
+        
     try:
         app(devs, led_pin, switch_pin, debug).main()
     finally:
