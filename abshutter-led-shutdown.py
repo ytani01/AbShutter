@@ -34,7 +34,8 @@ def get_logger(name, debug=False):
 
 #####
 class app:
-    CMDLINE_SHUTDOWN = ['sudo', 'shutdown', '-h', 'now']
+    CMDLINE = { 'shutdown': ['sudo', 'shutdown', '-h', 'now'],
+                'reboot':   ['sudo', 'shutdown', '-r', 'now'] }
     
     def __init__(self, devs, led_pin, sw_pin, debug=False):
         self.debug  = debug
@@ -84,42 +85,101 @@ class app:
         self.logger.debug(str(self.objs))
 
     def main(self):
+        self.led.blink(0.05, 0.95)
         while True:
             self.logger.info('%s  level:%d',
                              time.strftime('%Y/%m/%d(%a) %H:%M:%S'),
                              self.level)
             time.sleep(10)
 
-    def shutdown(self):
-        GPIO.setup(self.led_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    def exec_cmd(self, cmd):
+        self.logger.debug('CMDLINE[%s]: %s', cmd, str(self.CMDLINE[cmd]))
+        subprocess.run(self.CMDLINE[cmd])
 
-        self.logger.debug('cmdline: %s', str(self.CMDLINE_SHUTDOWN))
-        subprocess.run(self.CMDLINE_SHUTDOWN)
-        return
+    def shutdown(self):
+        self.logger.debug('')
+        
+        self.led.off()
+        GPIO.setup(self.led_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        self.exec_cmd('shutdown')
+
+    def reboot(self):
+        self.logger.debug('')
+
+        self.led.off()
+        GPIO.setup(self.led_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        self.exec_cmd('reboot')
+        
 
     # callback function for AB Shutter
     def cb_ab(self, dev, code, value):
-        self.logger.debug('dev=%d, code=%d, value=%d', dev, code, value)
+        self.logger.debug('level=%d, dev=%d, code=%d, value=%d', 
+                self.level, dev, code, value)
         key_name = AbShutter.keycode2str(code)
         val_str  = AbShutter.val2str(value)
         self.logger.info('/dev/input/event%d, %s:%s', dev, key_name, val_str)
 
+        prev_level = self.level
+
         if val_str == 'PUSH':
             self.led.on()
-        if val_str == 'RELEASE':
-            self.led.off()
+            self.push_start_sec = time.time()
+            self.level = 0
+            return
 
+        if val_str == 'RELEASE':
+            if self.level == len(self.long_press) - 2:
+                self.reboot()
+
+            self.led.off()
+            self.push_start_sec = 0
+            self.level = 0
+            return
+
+        if val_str == 'HOLD':
+            push_sec = time.time() - self.push_start_sec
+            idx = 0
+            for lp in self.long_press:
+                if push_sec >= lp['timeout']:
+                    self.level = idx
+                    idx += 1
+                    continue
+                else:
+                    break
+
+            if self.level != prev_level:
+                self.logger.debug('push_sec=%f, level=%d',
+                                  push_sec, self.level)
+                if self.level > 0 and self.level < len(self.long_press) - 1:
+                    self.led.off()
+                    self.led.blink(self.long_press[self.level]['blink']['on'],
+                                   self.long_press[self.level]['blink']['off'])
+                else:
+                    self.led.off()
+
+                if self.level >= len(self.long_press) - 1:
+                    self.shutdown()
+        
     # callback function for switch
     def cb_sw(self, event):
-        self.logger.info('pin:%d, %s[%d,%d]:%s', event.pin, 
+        self.logger.info('level=%d, pin:%d, %s[%d,%d]:%s',
+                self.level,
+                event.pin, 
                 event.name, event.push_count, event.timeout_idx, 
                 Switch.val2str(event.value))
 
         if event.name == 'pressed':
             self.led.on()
+            return
+
         if event.name == 'released':
+            if self.level == len(self.long_press) - 2:
+                self.reboot()
+
             self.level = 0
             self.led.off()
+            return
+
         if event.name == 'timer':
             self.level = event.timeout_idx
             if self.level > 0 and self.level < len(self.long_press) - 1:
@@ -129,12 +189,9 @@ class app:
             else:
                 self.led.off()
 
-        if self.level >= len(self.long_press) - 1:
-            self.level = 999
-            self.led.off()
-            self.shutdown()
+            if self.level >= len(self.long_press) - 1:
+                self.shutdown()
         
-        self.logger.info('level:%d', self.level)
 
 #####
 def setup_GPIO():
@@ -145,16 +202,6 @@ def cleanup_GPIO():
     GPIO.cleanup()
 
 #####
-#
-# default pin assignment
-#
-#           BCM06|○○|BCM12
-#           BCM13|○□|GND
-#           BCM19|○○|BCM16
-#   led_pin BCM26|●◆|BCM20 switch_vcc
-#   GND     GND  |■●|BCM21 switch_pin
-#                 ----
-#
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('devs', metavar='[0|1..]...', type=int, nargs=-1)
